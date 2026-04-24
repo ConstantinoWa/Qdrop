@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f172a">
-<title>QuickDrop v.04232300</title>
+<title>QuickDrop v.04232330</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
@@ -142,7 +142,7 @@
 <div class="app">
   <header>
     <h1>Quick<span class="dot">Drop</span></h1>
-    <div class="ver">v.04232300 · P2P 直傳</div>
+    <div class="ver">v.04232330 · P2P 直傳</div>
   </header>
 
   <div id="statusCard" class="card">
@@ -245,32 +245,52 @@ function init() {
 }
 
 function startHost() {
-  peer = new Peer(myId); // 用自訂 ID，QR 已先顯示
-  peer.on('open', (id) => {
-    console.log('PeerJS 已就緒:', id);
-  });
-  peer.on('connection', (c) => {
-    conn = c;
-    bindConn();
-  });
-  peer.on('error', (err) => {
-    console.error(err);
-    setStatus('訊號錯誤：' + err.type + '（QR 仍可用，重試中）', 'error');
-  });
+  if (typeof Peer === 'undefined') {
+    setStatus('PeerJS 載入中，請稍候…', 'waiting');
+    setTimeout(startHost, 300);
+    return;
+  }
+  try {
+    peer = new Peer(myId);
+    peer.on('open', (id) => {
+      console.log('PeerJS 已就緒:', id);
+    });
+    peer.on('connection', (c) => {
+      conn = c;
+      bindConn();
+    });
+    peer.on('error', (err) => {
+      console.error(err);
+      setStatus('訊號伺服器錯誤：' + err.type, 'error');
+    });
+  } catch (e) {
+    console.error(e);
+    setStatus('PeerJS 初始化失敗：' + e.message, 'error');
+  }
 }
 
 function startClient() {
+  if (typeof Peer === 'undefined') {
+    setStatus('PeerJS 載入中…', 'waiting');
+    setTimeout(startClient, 300);
+    return;
+  }
   setStatus('連線中…', 'waiting');
-  peer = new Peer();
-  peer.on('open', (id) => {
-    myId = id;
-    conn = peer.connect(remoteId, { reliable: true });
-    bindConn();
-  });
-  peer.on('error', (err) => {
-    console.error(err);
-    setStatus('錯誤：' + err.type, 'error');
-  });
+  try {
+    peer = new Peer();
+    peer.on('open', (id) => {
+      myId = id;
+      conn = peer.connect(remoteId, { reliable: true });
+      bindConn();
+    });
+    peer.on('error', (err) => {
+      console.error(err);
+      setStatus('錯誤：' + err.type, 'error');
+    });
+  } catch (e) {
+    console.error(e);
+    setStatus('PeerJS 初始化失敗：' + e.message, 'error');
+  }
 }
 
 function showQR(id) {
@@ -508,8 +528,27 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
-// 啟動
-window.addEventListener('load', init);
+// 啟動：用 DOMContentLoaded 不等 CDN
+function boot() {
+  // 檢查 QRCode library
+  if (typeof QRCode === 'undefined') {
+    // QRCode library 還沒載入，等 100ms 再試（最多 5 秒）
+    if (!boot.retries) boot.retries = 0;
+    if (boot.retries++ < 50) {
+      setTimeout(boot, 100);
+      return;
+    }
+    setStatus('QR 函式庫載入失敗（檢查網路/CDN）', 'error');
+    return;
+  }
+  init();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
 </script>
 </body>
 </html>
