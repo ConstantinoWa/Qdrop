@@ -5,9 +5,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f172a">
-<title>QuickDrop v.04232330</title>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<title>QuickDrop v.04241645</title>
+<script>
+// 多 CDN fallback 載入器
+(function() {
+  function loadScript(urls, onOk, onFail) {
+    let i = 0;
+    function tryNext() {
+      if (i >= urls.length) { onFail && onFail(); return; }
+      const s = document.createElement('script');
+      s.src = urls[i++];
+      s.onload = () => onOk && onOk();
+      s.onerror = tryNext;
+      document.head.appendChild(s);
+    }
+    tryNext();
+  }
+  window.__loadLibs = function(cb) {
+    let loaded = 0;
+    const done = () => { if (++loaded === 2) cb(); };
+    loadScript([
+      'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
+      'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js',
+      'https://cdn.staticfile.org/qrcodejs/1.0.0/qrcode.min.js'
+    ], done);
+    loadScript([
+      'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
+      'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js',
+      'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js'
+    ], done);
+  };
+})();
+</script>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -51,8 +80,9 @@
   #qrBox { display: flex; flex-direction: column; align-items: center; gap: 12px; }
   #qrCanvas {
     background: white; padding: 14px; border-radius: 14px;
-    width: 240px; height: 240px;
+    display: inline-block;
   }
+  #qrCanvas img, #qrCanvas canvas { display: block; }
   .qr-hint { color: #94a3b8; font-size: 13px; text-align: center; line-height: 1.6; }
   .qr-url {
     word-break: break-all; font-size: 11px; color: #64748b;
@@ -142,7 +172,7 @@
 <div class="app">
   <header>
     <h1>Quick<span class="dot">Drop</span></h1>
-    <div class="ver">v.04232330 · P2P 直傳</div>
+    <div class="ver">v.04241645 · P2P 直傳</div>
   </header>
 
   <div id="statusCard" class="card">
@@ -155,7 +185,7 @@
 
   <div id="qrCard" class="card hide">
     <div id="qrBox">
-      <canvas id="qrCanvas"></canvas>
+      <div id="qrCanvas" style="background:white;padding:14px;border-radius:14px;"></div>
       <div class="qr-hint">
         📱 請用另一台手機掃描此 QR Code
       </div>
@@ -296,9 +326,15 @@ function startClient() {
 function showQR(id) {
   const url = location.origin + location.pathname + '#' + id;
   $('qrUrl').textContent = url;
-  QRCode.toCanvas($('qrCanvas'), url, {
-    width: 240, margin: 1,
-    color: { dark: '#0f172a', light: '#ffffff' }
+  const box = $('qrCanvas');
+  box.innerHTML = '';
+  new QRCode(box, {
+    text: url,
+    width: 240,
+    height: 240,
+    colorDark: '#0f172a',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
   });
   $('qrCard').classList.remove('hide');
 }
@@ -528,20 +564,28 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
-// 啟動：用 DOMContentLoaded 不等 CDN
+// 啟動：先用多 CDN 載入 libraries，再 init
 function boot() {
-  // 檢查 QRCode library
-  if (typeof QRCode === 'undefined') {
-    // QRCode library 還沒載入，等 100ms 再試（最多 5 秒）
-    if (!boot.retries) boot.retries = 0;
-    if (boot.retries++ < 50) {
-      setTimeout(boot, 100);
-      return;
+  setStatus('載入函式庫…', 'waiting');
+  __loadLibs(() => {
+    // 等最多 3 秒讓 window.QRCode 變成可用
+    let tries = 0;
+    const check = setInterval(() => {
+      if (typeof QRCode !== 'undefined') {
+        clearInterval(check);
+        init();
+      } else if (++tries > 30) {
+        clearInterval(check);
+        setStatus('QR 函式庫載入失敗，請換 Chrome 或檢查網路', 'error');
+      }
+    }, 100);
+  });
+  // 10 秒還沒載好就顯示錯誤
+  setTimeout(() => {
+    if (typeof QRCode === 'undefined') {
+      setStatus('QR 函式庫載入失敗，可能是瀏覽器擋了 CDN', 'error');
     }
-    setStatus('QR 函式庫載入失敗（檢查網路/CDN）', 'error');
-    return;
-  }
-  init();
+  }, 10000);
 }
 
 if (document.readyState === 'loading') {
