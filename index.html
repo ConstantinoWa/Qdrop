@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f172a">
+<title>QuickDrop v.04232300</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  .app { max-width: 560px; margin: 0 auto; padding: 16px; min-height: 100vh; display: flex; flex-direction: column; }
+  header { text-align: center; padding: 12px 0 20px; }
+  header h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: 2px; }
+  header h1 .dot { color: #22d3ee; }
+  header .ver { font-size: 11px; color: #64748b; margin-top: 4px; }
+
+  .card {
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 14px;
+    backdrop-filter: blur(10px);
+  }
+
+  .status {
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; padding: 12px; border-radius: 12px;
+    font-size: 15px; font-weight: 500;
+  }
+  .status.waiting { background: rgba(234, 179, 8, 0.15); color: #fde68a; }
+  .status.connected { background: rgba(34, 197, 94, 0.15); color: #86efac; }
+  .status.error { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+  .status .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid currentColor; border-top-color: transparent;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #qrBox { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  #qrCanvas {
+    background: white; padding: 14px; border-radius: 14px;
+    width: 240px; height: 240px;
+  }
+  .qr-hint { color: #94a3b8; font-size: 13px; text-align: center; line-height: 1.6; }
+  .qr-url {
+    word-break: break-all; font-size: 11px; color: #64748b;
+    background: rgba(15, 23, 42, 0.5); padding: 8px; border-radius: 8px;
+    font-family: "SF Mono", Consolas, monospace; width: 100%;
+  }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .actions.full { grid-template-columns: 1fr; }
+  button, label.btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 14px; border: none; border-radius: 12px;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: transform 0.15s, opacity 0.15s;
+    color: white; font-family: inherit;
+  }
+  button:active, label.btn:active { transform: scale(0.97); opacity: 0.85; }
+  .btn-primary { background: linear-gradient(135deg, #22d3ee, #0ea5e9); }
+  .btn-secondary { background: linear-gradient(135deg, #8b5cf6, #6366f1); }
+  .btn-accent { background: linear-gradient(135deg, #f97316, #ea580c); }
+  .btn-ghost { background: rgba(71, 85, 105, 0.5); color: #e2e8f0; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  input[type="file"] { display: none; }
+
+  .text-area {
+    width: 100%; background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 10px; color: #e2e8f0; font-size: 15px;
+    padding: 10px; font-family: inherit; resize: vertical;
+    min-height: 70px;
+  }
+
+  .transfer-list { display: flex; flex-direction: column; gap: 10px; }
+  .item {
+    display: flex; flex-direction: column; gap: 8px;
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    border-radius: 12px; padding: 12px;
+  }
+  .item .head { display: flex; align-items: center; gap: 10px; }
+  .item .ico {
+    width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+    background: rgba(34, 211, 238, 0.15); color: #22d3ee;
+    display: flex; align-items: center; justify-content: center; font-size: 18px;
+  }
+  .item.sent .ico { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
+  .item .info { flex: 1; min-width: 0; }
+  .item .name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .meta { font-size: 11px; color: #64748b; margin-top: 2px; }
+  .item .actions-row { display: flex; gap: 6px; }
+  .item .actions-row button { padding: 7px 12px; font-size: 12px; flex: 1; }
+
+  .progress {
+    width: 100%; height: 4px; background: rgba(71, 85, 105, 0.4);
+    border-radius: 2px; overflow: hidden;
+  }
+  .progress > div {
+    height: 100%; background: linear-gradient(90deg, #22d3ee, #8b5cf6);
+    width: 0%; transition: width 0.1s;
+  }
+
+  .preview img, .preview video { max-width: 100%; border-radius: 8px; margin-top: 6px; }
+  .text-content {
+    background: rgba(15, 23, 42, 0.4); padding: 10px; border-radius: 8px;
+    font-size: 14px; white-space: pre-wrap; word-break: break-word; margin-top: 6px;
+  }
+
+  .empty { text-align: center; padding: 22px; color: #64748b; font-size: 13px; }
+
+  .hide { display: none !important; }
+
+  .role-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600; margin-left: 6px;
+  }
+  .role-host { background: rgba(34, 211, 238, 0.2); color: #22d3ee; }
+  .role-guest { background: rgba(249, 115, 22, 0.2); color: #fb923c; }
+
+  footer {
+    margin-top: auto; padding: 16px 0 8px;
+    text-align: center; color: #475569; font-size: 11px; line-height: 1.7;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Quick<span class="dot">Drop</span></h1>
+    <div class="ver">v.04232300 · P2P 直傳</div>
+  </header>
+
+  <div id="statusCard" class="card">
+    <div id="status" class="status waiting">
+      <span class="spinner"></span>
+      <span id="statusText">初始化中…</span>
+      <span id="roleTag"></span>
+    </div>
+  </div>
+
+  <div id="qrCard" class="card hide">
+    <div id="qrBox">
+      <canvas id="qrCanvas"></canvas>
+      <div class="qr-hint">
+        📱 請用另一台手機掃描此 QR Code
+      </div>
+      <div id="qrUrl" class="qr-url"></div>
+      <button class="btn-ghost" onclick="copyUrl()" style="width:100%">📋 複製網址</button>
+    </div>
+  </div>
+
+  <div id="sendCard" class="card hide">
+    <div style="margin-bottom:10px;font-size:14px;color:#94a3b8;">傳送</div>
+    <div class="actions" style="margin-bottom:10px">
+      <label class="btn btn-primary">
+        🖼️ 圖片/影片
+        <input type="file" accept="image/*,video/*" multiple onchange="pickFiles(event)">
+      </label>
+      <label class="btn btn-secondary">
+        📁 任意檔案
+        <input type="file" multiple onchange="pickFiles(event)">
+      </label>
+    </div>
+    <textarea id="textInput" class="text-area" placeholder="輸入文字訊息…"></textarea>
+    <button class="btn-accent" onclick="sendText()" style="width:100%;margin-top:8px">
+      ✉️ 傳送文字
+    </button>
+  </div>
+
+  <div id="listCard" class="card hide">
+    <div style="margin-bottom:10px;font-size:14px;color:#94a3b8;">記錄</div>
+    <div id="list" class="transfer-list">
+      <div class="empty">尚無傳輸記錄</div>
+    </div>
+  </div>
+
+  <footer>
+    PeerJS + WebRTC · 檔案 P2P 直傳不經伺服器<br>
+    需 HTTPS 與網路（iPhone 可連 Android 熱點）
+  </footer>
+</div>
+
+<script>
+'use strict';
+
+// ========= 狀態 =========
+let peer = null;
+let conn = null;
+let myId = null;
+let remoteId = null;
+let isHost = false;
+
+// 接收中的檔案
+const incoming = {}; // { transferId: { name, size, mime, received, chunks: [] } }
+
+// UI refs
+const $ = (id) => document.getElementById(id);
+const setStatus = (text, cls) => {
+  $('statusText').textContent = text;
+  const s = $('status');
+  s.className = 'status ' + (cls || 'waiting');
+  if (cls === 'connected' || cls === 'error') {
+    s.querySelector('.spinner')?.remove();
+  }
+};
+const setRole = (role) => {
+  const t = $('roleTag');
+  t.textContent = role === 'host' ? '主機' : '客戶端';
+  t.className = 'role-tag ' + (role === 'host' ? 'role-host' : 'role-guest');
+};
+
+// ========= 啟動 =========
+function init() {
+  const hash = location.hash.replace('#', '');
+  if (hash && hash.length > 3) {
+    // 客戶端：URL 帶 peer ID → 連線
+    isHost = false;
+    remoteId = hash;
+    setRole('guest');
+    startClient();
+  } else {
+    // 主機：立刻顯示 QR，PeerJS 背景連
+    isHost = true;
+    setRole('host');
+    myId = 'qd' + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+    showQR(myId);
+    setStatus('等待對方掃描…', 'waiting');
+    startHost();
+  }
+}
+
+function startHost() {
+  peer = new Peer(myId); // 用自訂 ID，QR 已先顯示
+  peer.on('open', (id) => {
+    console.log('PeerJS 已就緒:', id);
+  });
+  peer.on('connection', (c) => {
+    conn = c;
+    bindConn();
+  });
+  peer.on('error', (err) => {
+    console.error(err);
+    setStatus('訊號錯誤：' + err.type + '（QR 仍可用，重試中）', 'error');
+  });
+}
+
+function startClient() {
+  setStatus('連線中…', 'waiting');
+  peer = new Peer();
+  peer.on('open', (id) => {
+    myId = id;
+    conn = peer.connect(remoteId, { reliable: true });
+    bindConn();
+  });
+  peer.on('error', (err) => {
+    console.error(err);
+    setStatus('錯誤：' + err.type, 'error');
+  });
+}
+
+function showQR(id) {
+  const url = location.origin + location.pathname + '#' + id;
+  $('qrUrl').textContent = url;
+  QRCode.toCanvas($('qrCanvas'), url, {
+    width: 240, margin: 1,
+    color: { dark: '#0f172a', light: '#ffffff' }
+  });
+  $('qrCard').classList.remove('hide');
+}
+
+function copyUrl() {
+  const url = $('qrUrl').textContent;
+  navigator.clipboard?.writeText(url).then(() => {
+    alert('網址已複製');
+  }).catch(() => {
+    prompt('複製以下網址：', url);
+  });
+}
+
+// ========= 連線綁定 =========
+function bindConn() {
+  conn.on('open', () => {
+    setStatus('已連線', 'connected');
+    $('qrCard').classList.add('hide');
+    $('sendCard').classList.remove('hide');
+    $('listCard').classList.remove('hide');
+  });
+  conn.on('data', handleData);
+  conn.on('close', () => {
+    setStatus('連線中斷', 'error');
+    $('sendCard').classList.add('hide');
+  });
+  conn.on('error', (err) => {
+    console.error(err);
+    setStatus('連線錯誤', 'error');
+  });
+}
+
+// ========= 接收資料 =========
+function handleData(data) {
+  if (!data || typeof data !== 'object') return;
+
+  if (data.type === 'text') {
+    addItem({ kind: 'text', direction: 'recv', text: data.text });
+    return;
+  }
+
+  if (data.type === 'file-start') {
+    incoming[data.id] = {
+      name: data.name, size: data.size, mime: data.mime,
+      received: 0, chunks: [],
+      itemId: 'item-' + data.id
+    };
+    addItem({
+      kind: 'file', direction: 'recv', fileId: data.id,
+      name: data.name, size: data.size, mime: data.mime
+    });
+    return;
+  }
+
+  if (data.type === 'file-chunk') {
+    const rec = incoming[data.id];
+    if (!rec) return;
+    rec.chunks.push(data.data);
+    rec.received += data.data.byteLength;
+    updateProgress(rec.itemId, rec.received / rec.size);
+    return;
+  }
+
+  if (data.type === 'file-end') {
+    const rec = incoming[data.id];
+    if (!rec) return;
+    const blob = new Blob(rec.chunks, { type: rec.mime || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    finalizeFileItem(rec.itemId, url, rec.mime, rec.name);
+    delete incoming[data.id];
+  }
+}
+
+// ========= 傳送檔案 =========
+function pickFiles(e) {
+  const files = Array.from(e.target.files || []);
+  files.forEach(sendFile);
+  e.target.value = '';
+}
+
+async function sendFile(file) {
+  if (!conn || !conn.open) return alert('未連線');
+  const id = 'f' + Date.now() + Math.random().toString(36).slice(2, 7);
+  const itemId = 'item-' + id;
+
+  addItem({
+    kind: 'file', direction: 'sent', fileId: id,
+    name: file.name, size: file.size, mime: file.type
+  });
+
+  conn.send({
+    type: 'file-start', id,
+    name: file.name, size: file.size, mime: file.type
+  });
+
+  const CHUNK = 64 * 1024; // 64KB
+  let offset = 0;
+
+  while (offset < file.size) {
+    const slice = file.slice(offset, offset + CHUNK);
+    const buf = await slice.arrayBuffer();
+    // 等 buffer 不要太塞
+    await waitBuffer();
+    conn.send({ type: 'file-chunk', id, data: buf });
+    offset += buf.byteLength;
+    updateProgress(itemId, offset / file.size);
+  }
+  conn.send({ type: 'file-end', id });
+}
+
+function waitBuffer() {
+  return new Promise((resolve) => {
+    const dc = conn.dataChannel;
+    if (!dc || dc.bufferedAmount < 4 * 1024 * 1024) return resolve();
+    const check = () => {
+      if (dc.bufferedAmount < 1 * 1024 * 1024) resolve();
+      else setTimeout(check, 30);
+    };
+    check();
+  });
+}
+
+function sendText() {
+  const t = $('textInput').value.trim();
+  if (!t) return;
+  if (!conn || !conn.open) return alert('未連線');
+  conn.send({ type: 'text', text: t });
+  addItem({ kind: 'text', direction: 'sent', text: t });
+  $('textInput').value = '';
+}
+
+// ========= UI 列表 =========
+function addItem(opts) {
+  const list = $('list');
+  const empty = list.querySelector('.empty');
+  if (empty) empty.remove();
+
+  const div = document.createElement('div');
+  div.className = 'item ' + (opts.direction === 'sent' ? 'sent' : '');
+  if (opts.fileId) div.id = 'item-' + opts.fileId;
+
+  if (opts.kind === 'text') {
+    div.innerHTML = `
+      <div class="head">
+        <div class="ico">${opts.direction === 'sent' ? '📤' : '📥'}</div>
+        <div class="info">
+          <div class="name">${opts.direction === 'sent' ? '已傳送文字' : '收到文字'}</div>
+          <div class="meta">${new Date().toLocaleTimeString('zh-TW')}</div>
+        </div>
+        <button class="btn-ghost" style="padding:6px 10px;font-size:12px"
+                onclick="copyText(this)">複製</button>
+      </div>
+      <div class="text-content">${escapeHtml(opts.text)}</div>
+    `;
+  } else {
+    const icon = /^image\//.test(opts.mime || '') ? '🖼️' :
+                 /^video\//.test(opts.mime || '') ? '🎬' :
+                 /^audio\//.test(opts.mime || '') ? '🎵' : '📄';
+    div.innerHTML = `
+      <div class="head">
+        <div class="ico">${icon}</div>
+        <div class="info">
+          <div class="name">${escapeHtml(opts.name)}</div>
+          <div class="meta">${formatSize(opts.size)} · ${opts.direction === 'sent' ? '傳送中' : '接收中'}</div>
+        </div>
+      </div>
+      <div class="progress"><div></div></div>
+      <div class="preview"></div>
+      <div class="actions-row hide">
+        <a class="btn-primary btn download-link" style="text-decoration:none;padding:7px 12px;font-size:12px;flex:1;display:flex;align-items:center;justify-content:center">下載</a>
+      </div>
+    `;
+  }
+
+  list.prepend(div);
+}
+
+function updateProgress(itemId, pct) {
+  const el = document.getElementById(itemId);
+  if (!el) return;
+  const bar = el.querySelector('.progress > div');
+  if (bar) bar.style.width = Math.round(pct * 100) + '%';
+}
+
+function finalizeFileItem(itemId, url, mime, name) {
+  const el = document.getElementById(itemId);
+  if (!el) return;
+  el.querySelector('.progress > div').style.width = '100%';
+  el.querySelector('.meta').textContent =
+    el.querySelector('.meta').textContent.split('·')[0] + '· 完成';
+
+  const preview = el.querySelector('.preview');
+  if (/^image\//.test(mime)) {
+    preview.innerHTML = `<img src="${url}">`;
+  } else if (/^video\//.test(mime)) {
+    preview.innerHTML = `<video src="${url}" controls playsinline></video>`;
+  } else if (/^audio\//.test(mime)) {
+    preview.innerHTML = `<audio src="${url}" controls style="width:100%"></audio>`;
+  }
+
+  const row = el.querySelector('.actions-row');
+  row.classList.remove('hide');
+  const a = row.querySelector('.download-link');
+  a.href = url;
+  a.download = name;
+  a.textContent = '下載';
+}
+
+function copyText(btn) {
+  const txt = btn.parentElement.parentElement.querySelector('.text-content').textContent;
+  navigator.clipboard?.writeText(txt).then(() => {
+    btn.textContent = '已複製';
+    setTimeout(() => btn.textContent = '複製', 1500);
+  });
+}
+
+function formatSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1024 * 1024 * 1024) return (b / 1024 / 1024).toFixed(1) + ' MB';
+  return (b / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// 啟動
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
